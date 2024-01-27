@@ -135,21 +135,26 @@ class EmailMigrator:
         self.processed_total = 0
         for id, folder  in self.folder_migrator.map_folders.items():
 
-            q = Q(original_id__exists=False)
-            er = folder.origin.filter(q)
-            #er = folder.origin.all()
-            er.page_size = 200
-            er.chunk_size = 5
-            print( f"Processando diretório {folder.origin.absolute}" )
-            submitted_total = 0
-            for item in er:
-                
-                submitted_total += 1
-                self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
+            while True:
+                q = Q(original_id__exists=False)
+                er = folder.origin.filter(q)
 
-                if submitted_total == 20:
-                    self.tp.wait_completion()
-                    submitted_total = 0
+                if er.count() == 0:
+                    print( f"Diretório sem items {folder.origin.absolute}" )
+                    break
+
+                er.page_size = 200
+                er.chunk_size = 5
+                print( f"Processando diretório {folder.origin.absolute}" )
+                submitted_total = 0
+                for item in er:
+                    
+                    submitted_total += 1
+                    self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
+
+                    if submitted_total == 20:
+                        self.tp.wait_completion()
+                        submitted_total = 0
 
         self.tp.wait_completion()
 
