@@ -12,7 +12,17 @@ from yaml import load, Loader
 
 #logging.basicConfig(level=logging.DEBUG, handlers=[PrettyXmlHandler()])
 
-FOLDERS_IGNORE = ['Sync Issues', 'Junk Email', 'Deleted Items']
+FOLDERS_IGNORE = ['Sync Issues', 'Junk Email', 'Deleted Items', 'GraphFilesAndWorkingSetSearchFolder',
+'People I Know',
+'RelevantContacts',
+'SharedFilesSearchFolder',
+'Sharing',
+'SpoolsPresentSharedItemsSearchFolder',
+'SpoolsSearchFolder',
+'UserCuratedContacts','My Contacts',
+'AllContacts',
+'AllContactsExtended',
+'AllPersonMetadata',]
 
 class CustomFieldOriginalId(ExtendedProperty):
     distinguished_property_set_id = "Common"
@@ -34,7 +44,6 @@ class FolderMatch:
 class ExchangeFolderMigrator:
     def __init__(self):
         self.map_folders = {}
-        self.total_items = 0
 
     def create_or_get_folder(self, folder_name, parent_dest_folder):
         try:
@@ -58,7 +67,6 @@ class ExchangeFolderMigrator:
         else:
             new_dest_folder = parent_dest_folder
 
-        self.total_items += folder.all().count()
         self.map_folders[folder.id] = FolderMatch(origin=folder, dest=new_dest_folder)
 
         for subfolder in folder.children:
@@ -164,8 +172,8 @@ class EmailMigrator:
             if dest_folder.filter(q).count() == 0:
                 item.original_id = item.id
                 item.save(update_fields=["original_id"])
-                print( f"Copiando item {self.folder_migrator.total_items}/{processed}: - {item.id}" )
+                print( f"Copiando item {processed}: - {item.id}" )
                 data = acc_orig.export([item])
                 acc_dest.upload((dest_folder, d) for d in data)
             else:
-                print( f"Ignorando item copiado {self.folder_migrator.total_items}/{processed}: - {item.id}" )
+                print( f"Ignorando item copiado {processed}: - {item.id}" )
