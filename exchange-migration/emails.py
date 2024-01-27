@@ -24,16 +24,16 @@ FOLDERS_IGNORE = ['Sync Issues', 'Junk Email', 'Deleted Items', 'GraphFilesAndWo
 'AllContactsExtended',
 'AllPersonMetadata',]
 
-class CustomFieldOriginalId(ExtendedProperty):
+class CustomFieldSourceId(ExtendedProperty):
     distinguished_property_set_id = "Common"
     property_id = 0x00008524
     property_type = 'String'
 
-Contact.register('original_id', CustomFieldOriginalId)
-CalendarItem.register('original_id', CustomFieldOriginalId)
-Message.register('original_id', CustomFieldOriginalId)
-MeetingRequest.register('original_id', CustomFieldOriginalId)
-MeetingCancellation.register('original_id', CustomFieldOriginalId)
+Contact.register('source_id', CustomFieldSourceId)
+CalendarItem.register('source_id', CustomFieldSourceId)
+Message.register('source_id', CustomFieldSourceId)
+MeetingRequest.register('source_id', CustomFieldSourceId)
+MeetingCancellation.register('source_id', CustomFieldSourceId)
 
 class FolderMatch:
 
@@ -137,7 +137,7 @@ class EmailMigrator:
             self.processed_total = 0
 
             while True:
-                q = Q(original_id__exists=False)
+                q = Q(source_id__exists=False)
                 er = folder.origin.filter(q)
 
                 er.page_size = 200
@@ -177,10 +177,10 @@ class EmailMigrator:
             copy = True
 
         if copy:
-            q = Q(original_id__exact=item.id)
+            q = Q(source_id__exact=item.id)
             if dest_folder.filter(q).count() == 0:
-                item.original_id = item.id
-                item.save(update_fields=["original_id"])
+                item.source_id = item.id
+                item.save(update_fields=["source_id"])
 
                 text = ''
                 if hasattr(item, 'subject'):
