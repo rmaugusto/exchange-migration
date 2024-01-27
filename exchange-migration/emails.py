@@ -137,9 +137,8 @@ class EmailMigrator:
             if folder.origin.absolute == '/root':
                 continue
 
-            self.processed_total = 0
-
             while True:
+                self.processed_total = 0
                 q = Q(source_id__exists=False)
                 er = folder.origin.filter(q)
                 er.page_size = 200
