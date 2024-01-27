@@ -173,7 +173,14 @@ class EmailMigrator:
             if dest_folder.filter(q).count() == 0:
                 item.original_id = item.id
                 item.save(update_fields=["original_id"])
-                print( f"Copiando item {self.processed_total}: - {item.id}" )
+
+                text = ''
+                if hasattr(item, 'subject'):
+                    text = item.subject
+                if hasattr(item, 'display_name'):
+                    text = item.display_name
+
+                print( f"Copiando item {self.processed_total}: - {dest_folder.absolute} \ {text}" )
                 data = acc_orig.export([item])
                 acc_dest.upload((dest_folder, d) for d in data)
                 self.processed_total = self.processed_total + 1
