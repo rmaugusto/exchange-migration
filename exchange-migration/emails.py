@@ -26,7 +26,7 @@ FOLDERS_IGNORE = ['Sync Issues', 'Junk Email', 'Deleted Items', 'GraphFilesAndWo
 
 class CustomFieldSourceId(ExtendedProperty):
     distinguished_property_set_id = "Common"
-    property_id = 0x00008524
+    property_id = 0x00008525
     property_type = 'String'
 
 Contact.register('source_id', CustomFieldSourceId)
@@ -139,7 +139,6 @@ class EmailMigrator:
             while True:
                 q = Q(source_id__exists=False)
                 er = folder.origin.filter(q)
-
                 er.page_size = 200
                 er.chunk_size = 5
                 print( f"Processando diretório {folder.origin.absolute}" )
