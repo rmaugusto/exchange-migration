@@ -132,16 +132,13 @@ class EmailMigrator:
 
     def copy_items(self, acc_orig, folder_ori, acc_dest):
 
-        self.processed_total = 0
         for id, folder  in self.folder_migrator.map_folders.items():
+
+            self.processed_total = 0
 
             while True:
                 q = Q(original_id__exists=False)
                 er = folder.origin.filter(q)
-
-                if er.count() == 0:
-                    print( f"Diretório sem items {folder.origin.absolute}" )
-                    break
 
                 er.page_size = 200
                 er.chunk_size = 5
@@ -149,6 +146,7 @@ class EmailMigrator:
                 submitted_total = 0
                 for item in er:
                     
+                    #print(item)
                     submitted_total += 1
                     self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
 
@@ -156,7 +154,12 @@ class EmailMigrator:
                         self.tp.wait_completion()
                         submitted_total = 0
 
-        self.tp.wait_completion()
+                self.tp.wait_completion()
+
+                if self.processed_total == 0:
+                    print( f"Diretório sem mais items {folder.origin.absolute}" )
+                    break
+
 
 
     def process_item(self, acc_orig, acc_dest, item):
