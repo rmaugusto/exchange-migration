@@ -84,18 +84,20 @@ class EmailMigrator:
 
         config = load(open('config.yaml', 'r'), Loader=Loader)
 
+        self.tp = ThreadPool(config['general']['thread_count'])
+
         credentials_orig = OAuth2Credentials(
             client_id=config['origin']['client_id'], client_secret=config['origin']['client_secret'], tenant_id=config['origin']['tenant_id']
         )
         config_orig = Configuration(
-            retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_orig, max_connections=10
+            retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_orig, max_connections=config['origin']['connection_total']
         )
 
         credentials_dest = OAuth2Credentials(
             client_id=config['dest']['client_id'], client_secret=config['dest']['client_secret'], tenant_id=config['dest']['tenant_id']
         )
         config_dest = Configuration(
-            retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_dest, max_connections=10
+            retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_dest, max_connections=config['dest']['connection_total']
         )
 
         acc_orig = Account(config['origin']['email'], credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
@@ -121,7 +123,6 @@ class EmailMigrator:
     def copy_items(self, acc_orig, folder_ori, acc_dest):
 
         processed = 1
-        tp = ThreadPool(10)
         for id, folder  in self.folder_migrator.map_folders.items():
 
             q = Q(original_id__exists=False)
@@ -135,14 +136,13 @@ class EmailMigrator:
                 
                 submitted_total += 1
                 processed += 1
-                tp.add_task(self.process_item, acc_orig, acc_dest, processed, item)
-                #self.process_item(acc_orig, acc_dest, processed, item)
+                self.tp.add_task(self.process_item, acc_orig, acc_dest, processed, item)
 
                 if submitted_total == 20:
-                    tp.wait_completion()
+                    self.tp.wait_completion()
                     submitted_total = 0
 
-        tp.wait_completion()
+        self.tp.wait_completion()
 
 
     def process_item(self, acc_orig, acc_dest, processed, item):
