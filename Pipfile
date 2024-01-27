@@ -1,0 +1,13 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+PyYAML = "==6.0.1"
+exchangelib = {version="==5.1.0", extras=["complete"]}
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"
