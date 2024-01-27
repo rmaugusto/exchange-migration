@@ -94,6 +94,8 @@ class EmailMigrator:
 
         self.tp = ThreadPool(config['general']['thread_count'])
 
+        self.processed_total = 0
+
         credentials_orig = OAuth2Credentials(
             client_id=config['origin']['client_id'], client_secret=config['origin']['client_secret'], tenant_id=config['origin']['tenant_id']
         )
@@ -130,7 +132,7 @@ class EmailMigrator:
 
     def copy_items(self, acc_orig, folder_ori, acc_dest):
 
-        processed = 1
+        self.processed_total = 0
         for id, folder  in self.folder_migrator.map_folders.items():
 
             q = Q(original_id__exists=False)
@@ -143,8 +145,7 @@ class EmailMigrator:
             for item in er:
                 
                 submitted_total += 1
-                processed += 1
-                self.tp.add_task(self.process_item, acc_orig, acc_dest, processed, item)
+                self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
 
                 if submitted_total == 20:
                     self.tp.wait_completion()
@@ -153,7 +154,7 @@ class EmailMigrator:
         self.tp.wait_completion()
 
 
-    def process_item(self, acc_orig, acc_dest, processed, item):
+    def process_item(self, acc_orig, acc_dest, item):
         copy = False
         
         if isinstance(item, Message) and item.item_class in ('IPM.Nota', 'IPM.Note'):
@@ -172,8 +173,9 @@ class EmailMigrator:
             if dest_folder.filter(q).count() == 0:
                 item.original_id = item.id
                 item.save(update_fields=["original_id"])
-                print( f"Copiando item {processed}: - {item.id}" )
+                print( f"Copiando item {self.processed_total}: - {item.id}" )
                 data = acc_orig.export([item])
                 acc_dest.upload((dest_folder, d) for d in data)
+                self.processed_total = self.processed_total + 1
             else:
-                print( f"Ignorando item copiado {processed}: - {item.id}" )
+                print( f"Ignorando item copiado {item.id}" )
