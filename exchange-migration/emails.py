@@ -134,6 +134,9 @@ class EmailMigrator:
 
         for id, folder  in self.folder_migrator.map_folders.items():
 
+            if folder.origin.absolute == '/root':
+                continue
+
             self.processed_total = 0
 
             while True:
@@ -188,8 +191,8 @@ class EmailMigrator:
                     text = item.display_name
 
                 print( f"Copiando item {self.processed_total}: - {dest_folder.absolute} \ {text}" )
+                self.processed_total = self.processed_total + 1
                 data = acc_orig.export([item])
                 acc_dest.upload((dest_folder, d) for d in data)
-                self.processed_total = self.processed_total + 1
             else:
                 print( f"Ignorando item copiado {item.id}" )
