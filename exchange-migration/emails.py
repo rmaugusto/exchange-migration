@@ -1,3 +1,4 @@
+import logging
 import time
 from exchangelib import FaultTolerance, Configuration
 from exchangelib import IMPERSONATION, Account, CalendarItem, ExtendedProperty, Folder, Message, OAuth2Credentials
@@ -7,6 +8,7 @@ from exchangelib.items import (
 )
 from exchangelib import Q
 from thread import ThreadPool
+import os
 
 
 #logging.basicConfig(level=logging.DEBUG, handlers=[PrettyXmlHandler()])
@@ -22,6 +24,18 @@ FOLDERS_IGNORE = ['Sync Issues', 'Junk Email', 'Deleted Items', 'GraphFilesAndWo
 'AllContacts',
 'AllContactsExtended',
 'AllPersonMetadata',]
+
+def getLogger(name):
+    name = name.replace('.', '_').replace('@', '_')
+    logger = logging.Logger(name)
+    logger.setLevel(logging.DEBUG)
+
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+
+    handler = logging.FileHandler(os.path.join('logs/', name + '.log'), 'a')
+    logger.addHandler(handler)
+    return logger
 
 class CustomFieldSourceId(ExtendedProperty):
     distinguished_property_set_id = "Common"
@@ -46,7 +60,7 @@ class ExchangeFolderMigrator:
 
     def create_or_get_folder(self, folder_name, parent_dest_folder):
         try:
-            print("Validando diretório: ", parent_dest_folder.absolute + '/' + folder_name)
+            #print("Validando diretório: ", parent_dest_folder.absolute + '/' + folder_name)
             f = parent_dest_folder / folder_name
             return f
         except Exception as e:
@@ -57,7 +71,7 @@ class ExchangeFolderMigrator:
     def save_folder(self, folder_name, parent_dest_folder):
         new_folder = Folder(parent=parent_dest_folder, name=folder_name)
         new_folder = new_folder.save()
-        print("Criado diretório: ", new_folder.absolute)
+        #print("Criado diretório: ", new_folder.absolute)
         return new_folder
 
     def traverse_and_create(self, folder, parent_dest_folder):
@@ -110,10 +124,13 @@ class EmailMigrator:
         origin_email = config['accounts'][account_idx]['origin']
         dest_email = config['accounts'][account_idx]['dest']
 
-        print("Iniciando copia dos dados...")
-        print("Origem: ", origin_email)
-        print("Destino: ", dest_email)
-        
+        self.logger = getLogger(dest_email)
+
+        self.logger.info("Iniciando copia dos dados...")
+        self.logger.info(f"Origem: {origin_email}")
+        self.logger.info(f"Destino: {dest_email}")
+
+
         acc_orig = Account(origin_email, credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
         acc_dest = Account(dest_email, credentials=credentials_dest, autodiscover=True,  access_type=IMPERSONATION, config=config_dest)
         
@@ -129,7 +146,7 @@ class EmailMigrator:
         minutes = int((total_time % 3600) // 60)
         seconds = int(total_time % 60)
         # Formatando o tempo no formato hh:mm:ss
-        print(f"Finalizado em {hours:10d}:{minutes:02d}:{seconds:02d}") 
+        self.logger.info(f"Finalizado em {hours:10d}:{minutes:02d}:{seconds:02d}") 
     
         self.tp.close()
 
@@ -148,11 +165,10 @@ class EmailMigrator:
                 er = folder.origin.filter(q)
                 er.page_size = 200
                 er.chunk_size = 5
-                print( f"Processando diretório {folder.origin.absolute}" )
+                self.logger.info( f"Processando diretório {folder.origin.absolute}" )
                 submitted_total = 0
                 for item in er:
                     
-                    #print(item)
                     submitted_total += 1
                     self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
 
