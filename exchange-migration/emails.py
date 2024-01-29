@@ -1,4 +1,3 @@
-import datetime
 import time
 from exchangelib import FaultTolerance, Configuration
 from exchangelib import IMPERSONATION, Account, CalendarItem, ExtendedProperty, Folder, Message, OAuth2Credentials
@@ -8,7 +7,7 @@ from exchangelib.items import (
 )
 from exchangelib import Q
 from thread import ThreadPool
-from yaml import load, Loader
+
 
 #logging.basicConfig(level=logging.DEBUG, handlers=[PrettyXmlHandler()])
 
@@ -88,9 +87,7 @@ class EmailMigrator:
     def __init__(self):
         pass
 
-    def run(self):
-
-        config = load(open('config.yaml', 'r'), Loader=Loader)
+    def run(self, config, account_idx):
 
         self.tp = ThreadPool(config['general']['thread_count'])
 
@@ -110,8 +107,11 @@ class EmailMigrator:
             retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_dest, max_connections=config['dest']['connection_total']
         )
 
-        acc_orig = Account(config['origin']['email'], credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
-        acc_dest = Account(config['dest']['email'], credentials=credentials_dest, autodiscover=True,  access_type=IMPERSONATION, config=config_dest)
+        origin_email = config['accounts'][account_idx]['origin']
+        dest_email = config['accounts'][account_idx]['dest']
+
+        acc_orig = Account(origin_email, credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
+        acc_dest = Account(dest_email, credentials=credentials_dest, autodiscover=True,  access_type=IMPERSONATION, config=config_dest)
         
         self.folder_migrator = ExchangeFolderMigrator()
         self.folder_migrator.add_contacts(acc_orig, acc_dest)
@@ -128,6 +128,9 @@ class EmailMigrator:
         seconds = int(total_time % 60)
         # Formatando o tempo no formato hh:mm:ss
         print(f"Finalizado em {hours:10d}:{minutes:02d}:{seconds:02d}") 
+    
+        self.tp.close()
+
 
 
     def copy_items(self, acc_orig, folder_ori, acc_dest):
