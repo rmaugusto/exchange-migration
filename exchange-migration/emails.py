@@ -120,6 +120,8 @@ class EmailMigrator:
 
         #Print current time
         print("Iniciando copia dos dados...")
+        print("Origem: ", origin_email)
+        print("Destino: ", dest_email)
         initial_time = time.time()
         self.copy_items(acc_orig, acc_orig.root, acc_dest)
         total_time = time.time() - initial_time
