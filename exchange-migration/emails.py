@@ -110,6 +110,10 @@ class EmailMigrator:
         origin_email = config['accounts'][account_idx]['origin']
         dest_email = config['accounts'][account_idx]['dest']
 
+        print("Iniciando copia dos dados...")
+        print("Origem: ", origin_email)
+        print("Destino: ", dest_email)
+        
         acc_orig = Account(origin_email, credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
         acc_dest = Account(dest_email, credentials=credentials_dest, autodiscover=True,  access_type=IMPERSONATION, config=config_dest)
         
@@ -118,10 +122,6 @@ class EmailMigrator:
         self.folder_migrator.add_calendars(acc_orig, acc_dest)
         self.folder_migrator.traverse_and_create(acc_orig.root, acc_dest.root)
 
-        #Print current time
-        print("Iniciando copia dos dados...")
-        print("Origem: ", origin_email)
-        print("Destino: ", dest_email)
         initial_time = time.time()
         self.copy_items(acc_orig, acc_orig.root, acc_dest)
         total_time = time.time() - initial_time
