@@ -335,28 +335,30 @@ class EmailMigrator:
                 continue
 
             while True:
-                self.processed_total = 0
-                q = Q(source_id__exists=False)
-                er = folder.origin.filter(q)
-                er.page_size = 200
-                er.chunk_size = 5
-                self.logger.info( f"Processando diretório {folder.origin.absolute}" )
-                submitted_total = 0
-                for item in er:
-                    
-                    submitted_total += 1
-                    self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
+                try:
+                    self.processed_total = 0
+                    q = Q(source_id__exists=False)
+                    er = folder.origin.filter(q)
+                    er.page_size = 200
+                    er.chunk_size = 5
+                    self.logger.info( f"Processando diretório {folder.origin.absolute}" )
+                    submitted_total = 0
+                    for item in er:
+                        
+                        submitted_total += 1
+                        self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
 
-                    if submitted_total == 20:
-                        self.tp.wait_completion()
-                        submitted_total = 0
+                        if submitted_total == 20:
+                            self.tp.wait_completion()
+                            submitted_total = 0
 
-                self.tp.wait_completion()
+                    self.tp.wait_completion()
 
-                if self.processed_total == 0:
-                    print( f"Diretório sem mais items {folder.origin.absolute}" )
-                    break
-
+                    if self.processed_total == 0:
+                        print( f"Diretório sem mais items {folder.origin.absolute}" )
+                        break
+                except Exception as e:
+                    self.logger.warn(f"Erro: {e.message}, continuando...") 
 
 
     def process_item(self, acc_orig, acc_dest, item):
