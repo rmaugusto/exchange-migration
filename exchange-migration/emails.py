@@ -149,7 +149,7 @@ def getLogger(name):
 
 class CustomFieldSourceId(ExtendedProperty):
     distinguished_property_set_id = "Common"
-    property_id = 0x00008524
+    property_id = 0x00008526
     property_type = 'String'
 
 Contact.register('source_id', CustomFieldSourceId)
