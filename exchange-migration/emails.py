@@ -149,7 +149,7 @@ def getLogger(name):
 
 class CustomFieldSourceId(ExtendedProperty):
     distinguished_property_set_id = "Common"
-    property_id = 0x00008525
+    property_id = 0x00008524
     property_type = 'String'
 
 Contact.register('source_id', CustomFieldSourceId)
@@ -231,31 +231,8 @@ class ExchangeFolderMigrator:
 
     def add_first_level(self, acc_orig, acc_dest):
 
-        root_folder_orig = None
-        root_folder_dest = None
-
-        try:
-            root_folder_orig = acc_orig.root / 'Início do Repositório de Informações'
-        except:
-            pass
-
-        try:
-            if not root_folder_orig:
-                root_folder_orig = acc_orig.root / 'Top of Information Store'
-        except:
-            pass
-
-        try:
-            root_folder_dest = acc_dest.root / 'Início do Repositório de Informações'
-        except:
-            pass
-
-        try:
-            if not root_folder_dest:
-                root_folder_dest = acc_dest.root / 'Top of Information Store'
-        except:
-            pass
-
+        root_folder_orig = acc_orig.msg_folder_root
+        root_folder_dest = acc_dest.msg_folder_root
 
         for subfolder in root_folder_orig.children:
 
@@ -358,7 +335,7 @@ class EmailMigrator:
                         print( f"Diretório sem mais items {folder.origin.absolute}" )
                         break
                 except Exception as e:
-                    self.logger.warn(f"Erro: {e.message}, continuando...") 
+                    self.logger.warn("Erro, continuando...", e) 
 
 
     def process_item(self, acc_orig, acc_dest, item):
