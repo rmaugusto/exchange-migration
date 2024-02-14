@@ -1,245 +1,18 @@
-import logging
+from utils import FolderDiscovery, getLogger
 import time
-from exchangelib import FaultTolerance, Configuration, FolderCollection
-from exchangelib import IMPERSONATION, Account, CalendarItem, ExtendedProperty, Folder, Message, OAuth2Credentials
+from exchangelib import FaultTolerance, Configuration
+from exchangelib import IMPERSONATION, Account, CalendarItem, Message, OAuth2Credentials
+from exchangelib import EWSDateTime, EWSTimeZone
 from exchangelib.items import (
     Message,
-    Contact, DistributionList, Persona, MeetingRequest, MeetingCancellation
+    Contact, DistributionList, Persona
 )
 from exchangelib import Q
 from thread import ThreadPool
-import os
-from exchangelib.properties import DistinguishedFolderId
+from datetime import datetime, timedelta
+import time
 
-#logging.basicConfig(level=logging.DEBUG, handlers=[PrettyXmlHandler()])
-
-FOLDERS_IGNORE = [
-    'Sync Issues', 
-    'Junk Email', 
-    'Deleted Items', 
-    'GraphFilesAndWorkingSetSearchFolder',
-    'People I Know',
-    'RelevantContacts',
-    'SharedFilesSearchFolder',
-    'Favorites',
-    'Sharing',
-    'SpoolsPresentSharedItemsSearchFolder',
-    'SpoolsSearchFolder',
-    'UserCuratedContacts','My Contacts',
-    'AllContacts',
-    'AllContactsExtended',
-    'AllPersonMetadata',
-    'Favoritos',
-    'Início do Repositório de Informações',
-    'Meus Contatos',
-    'PeopleConnect',
-    'Recoverable Items',
-    'Finder',
-    'To-Do Search',
-    'System',
-    'AllCategorizedItems',
-    'AllContacts',
-    'AllContactsExtended',
-    'AllItems',
-    'AllPersonMetadata',
-    'AllTodoTasks',
-    'ApplicationDataRoot',
-    'BrokerSubscriptions',
-    'BulkActions',
-    'Calendar Version Store',
-    'CalendarItemSnapshots',
-    'CalendarSearchCache',
-    'CalendarSharingCacheCollection',
-    'Common Views',
-    'ComplianceMetadata',
-    'Connectors',
-    'CrawlerData',
-    'DefaultFoldersChangeHistory',
-    'Deferred Action',
-    'DlpPolicyEvaluation',
-    'Document Centric Conversations',
-    'ExchangeODataSyncData',
-    'ExchangeSyncData',
-    'FileCollectionCache',
-    'Folder Memberships',
-    'Freebusy Data',
-    'FreeBusyLocalCache',
-    'GraphFilesAndWorkingSetSearchFolder',
-    'GraphStore',
-    'Inference',
-    'Lembretes',
-    'Location',
-    'MailboxAssociations',
-    'MeetingSapces',
-    'MergedViewFolderCollection',
-    'MessageIngestion',
-    'MyAnalytics-ActionLog',
-    'MyAnalytics-UnreadFromIRankerFolder',
-    'MyAnalytics-UnreadFromVIPFolder',
-    'O365 Suite Notifications',
-    'O365 Suite Storage',
-    'OneDriveRoot',
-    'OneNotePagePreviews',
-    'Orion Notes',
-    'OutlookExtensions',
-    'PACE',
-    'ParkedMessages',
-    'Pass-Through Search Results',
-    'PdpProfile',
-    'PdpProfileV2',
-    'People I Know',
-    'PeopleInsights',
-    'PeoplePublicData',
-    'QuarantinedEmail',
-    'RecoveryPoints',
-    'RelevantContacts',
-    'Schedule',
-    'SearchFoldersView',
-    'ShadowItems',
-    'ShardRelevancyFolder',
-    'SharedFilesSearchFolder',
-    'SharePointNotifications',
-    'Sharing',
-    'Shortcuts',
-    'ShortNotes',
-    'SkypeSpacesData',
-    'SmsAndChatsSync',
-    'SpamReports',
-    'Spooler Queue',
-    'SpoolsPresentSharedItemsSearchFolder',
-    'SpoolsSearchFolder',
-    'Subscriptions',
-    'SubstrateFiles',
-    'SuggestedUserGroupAssociations',
-    'SwssItems',
-    'TeamChatHistory',
-    'TeamsMessagesData',
-    'TemporarySaves',
-    'UserCuratedContacts',
-    'UserSocialActivityNotifications',
-    'Archive',
-    'Views',
-    'XrmActivityClientInstrumentation',
-    'XrmActivityServerInstrumentation',
-    'XrmActivityStream',
-    'XrmActivityStreamSearch',
-    'XrmCompanySearch',
-    'XrmDealSearch',
-    'XrmDeletedItems',
-    'XrmInsights',
-    'XrmProjects',
-    'Itens Excluídos',
-    'Lixo Eletrônico',
-    'Problemas de Sincronização',
-    'XrmSearch',
-    'YammerData'
-]
-
-def getLogger(name):
-    name = name.replace('.', '_').replace('@', '_')
-    logger = logging.Logger(name)
-    logger.setLevel(logging.DEBUG)
-
-    if not os.path.exists('logs'):
-        os.makedirs('logs')
-
-    handler = logging.FileHandler(os.path.join('logs/', name + '.log'), 'a')
-    logger.addHandler(handler)
-    return logger
-
-class CustomFieldSourceId(ExtendedProperty):
-    distinguished_property_set_id = "Common"
-    property_id = 0x00008527
-    property_type = 'String'
-
-Contact.register('source_id', CustomFieldSourceId)
-CalendarItem.register('source_id', CustomFieldSourceId)
-Message.register('source_id', CustomFieldSourceId)
-MeetingRequest.register('source_id', CustomFieldSourceId)
-MeetingCancellation.register('source_id', CustomFieldSourceId)
-
-class FolderMatch:
-
-    def __init__(self, origin=None, dest=None):
-        self.origin = origin
-        self.dest = dest
-
-class ExchangeFolderMigrator:
-    def __init__(self):
-        self.map_folders = {}
-
-    def create_or_get_folder(self, folder_name, parent_dest_folder):
-        try:
-            print("Validando diretório: ", parent_dest_folder.absolute + '/' + folder_name)
-            f = parent_dest_folder / folder_name
-            return f
-        except Exception as e:
-            # Cria se não existir
-            f = self.save_folder(folder_name, parent_dest_folder)
-            return f
-
-    def save_folder(self, folder_name, parent_dest_folder):
-        new_folder = Folder(parent=parent_dest_folder, name=folder_name)
-        new_folder = new_folder.save()
-        #print("Criado diretório: ", new_folder.absolute)
-        return new_folder
-
-    def equals_translated(self, folder1, folder2):
-        if (folder1.lower() == 'inbox' and folder2.lower() == 'caixa de entrada') or \
-            (folder1.lower() == 'caixa de entrada' and folder2.lower() == 'inbox'):
-            return True
-        
-        if (folder1.lower() == 'outbox' and folder2.lower() == 'caixa de saída') or \
-            (folder1.lower() == 'caixa de saída' and folder2.lower() == 'outbox'):
-            return True
-        
-        if (folder1.lower() == 'sent items' and folder2.lower() == 'itens enviados') or \
-            (folder1.lower() == 'itens enviados' and folder2.lower() == 'sent items'):
-            return True
-
-        return folder1 == folder2
-
-    def traverse_and_create(self, folder, parent_dest_folder):
-        if self.equals_translated(folder.name, parent_dest_folder.name):
-            new_dest_folder = parent_dest_folder
-        else:
-            new_dest_folder = self.create_or_get_folder(folder.name, parent_dest_folder)
-
-        if folder.id not in self.map_folders:
-            self.map_folders[folder.id] = FolderMatch(origin=folder, dest=new_dest_folder)
-
-            for subfolder in folder.children:
-                #Diretório de emails
-                if (subfolder.folder_class == 'IPF.Note' or subfolder.name == 'Top of Information Store' or subfolder.name == 'Início do Repositório de Informações') and subfolder.name not in FOLDERS_IGNORE:
-                    self.traverse_and_create(subfolder, new_dest_folder)
-
-    def add_contacts(self, acc_orig, acc_dest):
-        folder_ori = acc_orig.contacts
-        folder_dest = acc_dest.contacts
-        self.map_folders[folder_ori.id] = FolderMatch(origin=folder_ori, dest=folder_dest)
-
-    def add_calendars(self, acc_orig, acc_dest):
-        folder_ori = acc_orig.calendar
-        folder_dest = acc_dest.calendar
-        self.map_folders[folder_ori.id] = FolderMatch(origin=folder_ori, dest=folder_dest)
-
-    def add_messages(self, acc_orig, acc_dest):
-        self.map_folders[acc_orig.inbox.id] = FolderMatch(origin=acc_orig.inbox, dest=acc_dest.inbox)
-        self.map_folders[acc_orig.outbox.id] = FolderMatch(origin=acc_orig.outbox, dest=acc_dest.outbox)
-        self.map_folders[acc_orig.sent.id] = FolderMatch(origin=acc_orig.sent, dest=acc_dest.sent)
-        self.map_folders[acc_orig.drafts.id] = FolderMatch(origin=acc_orig.drafts, dest=acc_dest.drafts)
-
-    def add_first_level(self, acc_orig, acc_dest):
-
-        root_folder_orig = acc_orig.msg_folder_root
-        root_folder_dest = acc_dest.msg_folder_root
-
-        for subfolder in root_folder_orig.children:
-
-            if subfolder.id not in self.map_folders:
-                if (subfolder.folder_class == 'IPF.Note') and subfolder.name not in FOLDERS_IGNORE:
-                    self.traverse_and_create(subfolder, root_folder_dest)
-
+MAX_TASKS = 20
 
 class EmailMigrator:
     def __init__(self):
@@ -249,7 +22,7 @@ class EmailMigrator:
 
         self.tp = ThreadPool(config['general']['thread_count'])
 
-        self.processed_total = 0
+        self.copied_items = 0
 
         credentials_orig = OAuth2Credentials(
             client_id=config['origin']['client_id'], client_secret=config['origin']['client_secret'], tenant_id=config['origin']['tenant_id']
@@ -270,29 +43,42 @@ class EmailMigrator:
 
         self.logger = getLogger(dest_email)
 
-        self.logger.info("Iniciando copia dos dados...")
-        self.logger.info(f"Origem: {origin_email}")
-        self.logger.info(f"Destino: {dest_email}")
+        self.logger.info("Iniciando copia de emails...")
+        self.logger.info(f"Conectando caixa de origem: {origin_email}")
 
-
-        acc_orig = Account(origin_email, credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
-        acc_dest = Account(dest_email, credentials=credentials_dest, autodiscover=True,  access_type=IMPERSONATION, config=config_dest)
+        try:
+            acc_orig = Account(origin_email, credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
+        except Exception as e:
+            self.logger.error(f"Erro ao conectar caixa de origem: {origin_email}, {e}")
+            return
         
-        self.folder_migrator = ExchangeFolderMigrator()
+        self.logger.info(f"Conectando caixa de destino: {dest_email}")
+        try:
+            acc_dest = Account(dest_email, credentials=credentials_dest, autodiscover=True,  access_type=IMPERSONATION, config=config_dest)
+        except Exception as e:
+            self.logger.error(f"Erro ao conectar caixa de destino: {dest_email}, {e}")
+            return
 
-        self.folder_migrator.add_messages(acc_orig, acc_dest)
-        self.folder_migrator.add_contacts(acc_orig, acc_dest)
-        self.folder_migrator.add_calendars(acc_orig, acc_dest)
+        self.logger.info(f"Descobrindo diretórios conhecidos...") 
+
+        self.folder_migrator = FolderDiscovery(logger=self.logger, auto_create=True)
+
+        self.folder_migrator.add_messages_folder(acc_orig, acc_dest)
+        self.folder_migrator.add_contacts_folder(acc_orig, acc_dest)
+        self.folder_migrator.add_calendars_folder(acc_orig, acc_dest)
 
         #Cria sub dos diretorios conhecidos
         self.folder_migrator.traverse_and_create(acc_orig.inbox, acc_dest.inbox)
         self.folder_migrator.traverse_and_create(acc_orig.outbox, acc_dest.outbox)
         self.folder_migrator.traverse_and_create(acc_orig.sent, acc_dest.sent)
 
+        self.logger.info(f"Descobrindo diretórios customizados...") 
         self.folder_migrator.add_first_level(acc_orig, acc_dest)
 
         initial_time = time.time()
+
         self.copy_items(acc_orig, acc_orig.root, acc_dest)
+
         total_time = time.time() - initial_time
         hours = int(total_time // 3600)
         minutes = int((total_time % 3600) // 60)
@@ -313,25 +99,35 @@ class EmailMigrator:
 
             while True:
                 try:
-                    self.processed_total = 0
-                    q = Q(source_id__exists=False)
-                    er = folder.origin.filter(q)
+                    self.copied_items = 0
+
+                    tz = EWSTimeZone('America/Sao_Paulo')
+                    date_init = EWSDateTime.from_datetime(datetime.now()).astimezone(tz) - timedelta(days=365)
+                    q = Q(source_id__exists=False) & Q(datetime_received__gte=date_init)
+                    er = folder.origin.filter(q).only('id', 'changekey', 'item_class', 'source_id')
                     er.page_size = 200
                     er.chunk_size = 5
-                    self.logger.info( f"Processando diretório {folder.origin.absolute}" )
+                    total_items = er.count()
+                    self.logger.info( f"Processando diretório {folder.origin.absolute} com {total_items} itens" )
                     submitted_total = 0
+                    items_covered = 0
                     for item in er:
                         
                         submitted_total += 1
-                        self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
+                        items_covered += 1
 
-                        if submitted_total == 20:
+                        self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
+                        #print(item)
+                        #self.process_item(acc_orig, acc_dest, item)
+
+                        if submitted_total == MAX_TASKS:
                             self.tp.wait_completion()
+                            self.logger.info( f"Processando diretório {folder.origin.absolute} - {items_covered}/{total_items} " )
                             submitted_total = 0
 
                     self.tp.wait_completion()
 
-                    if self.processed_total == 0:
+                    if self.copied_items == 0:
                         print( f"Diretório sem mais items {folder.origin.absolute}" )
                         break
                 except Exception as e:
@@ -342,6 +138,9 @@ class EmailMigrator:
         copy = False
         
         if isinstance(item, Message) and item.item_class in ('IPM.Nota', 'IPM.Note'):
+            items = acc_orig.fetch(ids=[(item.id, item.changekey)], only_fields=['parent_folder_id', 'subject', 'id', 'changekey', 'item_class', 'source_id'])
+            item = next(items, None)
+
             parent = item.parent_folder_id.id
             dest_folder = self.folder_migrator.map_folders[parent].dest
             copy = True
@@ -355,18 +154,21 @@ class EmailMigrator:
         if copy:
             q = Q(source_id__exact=item.id)
             if dest_folder.filter(q).count() == 0:
-                item.source_id = item.id
-                item.save(update_fields=["source_id"])
+                try:
+                    item.source_id = item.id
+                    item.save(update_fields=["source_id"])
 
-                text = ''
-                if hasattr(item, 'subject'):
-                    text = item.subject
-                if hasattr(item, 'display_name'):
-                    text = item.display_name
+                    text = ''
+                    if hasattr(item, 'subject'):
+                        text = item.subject
+                    if hasattr(item, 'display_name'):
+                        text = item.display_name
 
-                print( f"Copiando item {self.processed_total}: - {dest_folder.absolute} \ {text}" )
-                self.processed_total = self.processed_total + 1
-                data = acc_orig.export([item])
-                acc_dest.upload((dest_folder, d) for d in data)
+                    print( f"Copiando item {item.id}: - {dest_folder.absolute}/{text}" )
+                    self.copied_items += 1
+                    data = acc_orig.export([item])
+                    acc_dest.upload((dest_folder, d) for d in data)
+                except Exception as e:
+                    self.logger.warn("Erro ao copiar, continuando...", e)
             else:
-                print( f"Ignorando item copiado {item.id}" )
+                print( f"Ignorando item pois já foi copiado {item.id}" )
