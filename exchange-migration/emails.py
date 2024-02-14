@@ -12,8 +12,6 @@ from thread import ThreadPool
 from datetime import datetime, timedelta
 import time
 
-MAX_TASKS = 20
-
 class EmailMigrator:
     def __init__(self):
         pass
@@ -21,6 +19,7 @@ class EmailMigrator:
     def run(self, config, account_idx):
 
         self.tp = ThreadPool(config['general']['thread_count'])
+        self.task_limit = config['general']['task_limit']
 
         self.copied_items = 0
 
@@ -116,11 +115,11 @@ class EmailMigrator:
                         submitted_total += 1
                         items_covered += 1
 
-                        self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
                         #print(item)
+                        self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
                         #self.process_item(acc_orig, acc_dest, item)
 
-                        if submitted_total == MAX_TASKS:
+                        if submitted_total == self.task_limit:
                             self.tp.wait_completion()
                             self.logger.info( f"Processando diretório {folder.origin.absolute} - {items_covered}/{total_items} " )
                             submitted_total = 0
