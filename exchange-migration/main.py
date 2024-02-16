@@ -1,12 +1,11 @@
 from exchangelib import CalendarItem, Folder, Message
 from exchangelib.items import (
     Message,
-    Contact,  MeetingRequest, MeetingCancellation
+    Contact,  MeetingRequest, MeetingCancellation, MeetingResponse
 )
 from utils import CustomFieldSourceId
 from yaml import load, Loader
-from email_stats import EmailStats
-from emails import EmailMigrator
+from migration import EmailMigrator
 
 def main():
 
@@ -14,6 +13,7 @@ def main():
     CalendarItem.register('source_id', CustomFieldSourceId)
     Message.register('source_id', CustomFieldSourceId)
     MeetingRequest.register('source_id', CustomFieldSourceId)
+    MeetingResponse.register('source_id', CustomFieldSourceId)
     MeetingCancellation.register('source_id', CustomFieldSourceId)
 
     config = load(open('config.yaml', 'r'), Loader=Loader)
@@ -22,7 +22,6 @@ def main():
 
     for account_idx in range(0, len(accounts)):
         em = EmailMigrator()
-        #em = EmailStats()
         em.run(config, account_idx)
 
 if __name__ == "__main__":

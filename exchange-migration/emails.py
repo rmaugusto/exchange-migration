@@ -1,95 +1,80 @@
-from utils import FolderDiscovery, getLogger
-import time
-from exchangelib import FaultTolerance, Configuration
-from exchangelib import IMPERSONATION, Account, CalendarItem, Message, OAuth2Credentials
+from abc import ABC
+from exchangelib import CalendarItem, Message
 from exchangelib import EWSDateTime, EWSTimeZone
 from exchangelib.items import (
     Message,
-    Contact, DistributionList, Persona
+    Contact, DistributionList, Persona, MeetingRequest, MeetingResponse, MeetingCancellation
 )
 from exchangelib import Q
-from thread import ThreadPool
-from datetime import datetime, timedelta
-import time
 
-class EmailMigrator:
-    def __init__(self):
-        pass
-
-    def run(self, config, account_idx):
-
-        self.tp = ThreadPool(config['general']['thread_count'])
+#Abstract Email Migrator
+class BaseItem(ABC):
+    
+    def __init__(self, folder_migrator, logger, tp, config):
+        self.folder_migrator = folder_migrator
+        self.logger = logger
+        self.tp = tp
+        self.config = config
         self.task_limit = config['general']['task_limit']
 
-        self.copied_items = 0
 
-        credentials_orig = OAuth2Credentials(
-            client_id=config['origin']['client_id'], client_secret=config['origin']['client_secret'], tenant_id=config['origin']['tenant_id']
-        )
-        config_orig = Configuration(
-            retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_orig, max_connections=config['origin']['connection_total']
-        )
+    def query_items_not_copied(self):
+        tz = EWSTimeZone('America/Sao_Paulo')
+        initial_date = EWSDateTime.from_datetime(self.config['general']['initial_date']).astimezone(tz)
+        final_date = EWSDateTime.from_datetime(self.config['general']['final_date']).astimezone(tz)
 
-        credentials_dest = OAuth2Credentials(
-            client_id=config['dest']['client_id'], client_secret=config['dest']['client_secret'], tenant_id=config['dest']['tenant_id']
-        )
-        config_dest = Configuration(
-            retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_dest, max_connections=config['dest']['connection_total']
-        )
-
-        origin_email = config['accounts'][account_idx]['origin']
-        dest_email = config['accounts'][account_idx]['dest']
-
-        self.logger = getLogger(dest_email)
-
-        self.logger.info("Iniciando copia de emails...")
-        self.logger.info(f"Conectando caixa de origem: {origin_email}")
-
-        try:
-            acc_orig = Account(origin_email, credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
-        except Exception as e:
-            self.logger.error(f"Erro ao conectar caixa de origem: {origin_email}, {e}")
-            return
-        
-        self.logger.info(f"Conectando caixa de destino: {dest_email}")
-        try:
-            acc_dest = Account(dest_email, credentials=credentials_dest, autodiscover=True,  access_type=IMPERSONATION, config=config_dest)
-        except Exception as e:
-            self.logger.error(f"Erro ao conectar caixa de destino: {dest_email}, {e}")
-            return
-
-        self.logger.info(f"Descobrindo diretórios conhecidos...") 
-
-        self.folder_migrator = FolderDiscovery(logger=self.logger, auto_create=True)
-
-        self.folder_migrator.add_messages_folder(acc_orig, acc_dest)
-        self.folder_migrator.add_contacts_folder(acc_orig, acc_dest)
-        self.folder_migrator.add_calendars_folder(acc_orig, acc_dest)
-
-        #Cria sub dos diretorios conhecidos
-        self.folder_migrator.traverse_and_create(acc_orig.inbox, acc_dest.inbox)
-        self.folder_migrator.traverse_and_create(acc_orig.outbox, acc_dest.outbox)
-        self.folder_migrator.traverse_and_create(acc_orig.sent, acc_dest.sent)
-
-        self.logger.info(f"Descobrindo diretórios customizados...") 
-        self.folder_migrator.add_first_level(acc_orig, acc_dest)
-
-        initial_time = time.time()
-
-        self.copy_items(acc_orig, acc_orig.root, acc_dest)
-
-        total_time = time.time() - initial_time
-        hours = int(total_time // 3600)
-        minutes = int((total_time % 3600) // 60)
-        seconds = int(total_time % 60)
-        
-        # Formatando o tempo no formato hh:mm:ss
-        self.logger.info(f"Finalizado em {hours:10d}:{minutes:02d}:{seconds:02d}") 
+        return Q(source_id__exists=False) & Q(datetime_received__gte=initial_date) & Q(datetime_received__lte=final_date)
     
-        self.tp.close()
+    def query_items(self):
+        tz = EWSTimeZone('America/Sao_Paulo')
+        initial_date = EWSDateTime.from_datetime(self.config['general']['initial_date']).astimezone(tz)
+        final_date = EWSDateTime.from_datetime(self.config['general']['final_date']).astimezone(tz)
+        return Q(datetime_received__gte=initial_date) & Q(datetime_received__lte=final_date)
+     
+    def get_item_by_id(self, folder, item_id):
+        q = Q(id__exact=item_id)
+        items = folder.filter(q).only('id', 'changekey', 'item_class', 'source_id')
+        return items.count()
+
+    def exists_item_by_source_id(self, folder, item_id):
+        q = Q(source_id__exact=item_id)
+        items = folder.filter(q).only('id', 'changekey', 'item_class', 'source_id')
+        return items.count() > 0
 
 
-    def copy_items(self, acc_orig, folder_ori, acc_dest):
+    def get_item_by_source_id(self, folder, item_id):
+        q = Q(source_id__exact=item_id)
+        items = folder.filter(q).only('id', 'changekey', 'item_class', 'source_id')
+
+        if items.exists():
+            return items.get()
+        
+        return None
+
+    def is_copy_elegible(self, item):
+        copy = False 
+
+        if isinstance(item, Message):
+            copy = True
+        elif isinstance(item, Contact) or  isinstance(item, DistributionList) or  isinstance(item, Persona) :
+            copy = True
+        elif isinstance(item, CalendarItem):
+            copy = True
+        elif isinstance(item, MeetingRequest):
+            copy = True
+        elif isinstance(item, MeetingResponse):
+            copy = True
+        elif isinstance(item, MeetingCancellation):
+            copy = True
+
+        return copy
+
+
+class ItemCopier(BaseItem):
+    def __init__(self, folder_migrator, logger, tp, config):
+        super().__init__(folder_migrator, logger, tp, config)
+
+    def copy_items(self, acc_orig, acc_dest):
 
         for id, folder  in self.folder_migrator.map_folders.items():
 
@@ -100,9 +85,7 @@ class EmailMigrator:
                 try:
                     self.copied_items = 0
 
-                    tz = EWSTimeZone('America/Sao_Paulo')
-                    date_init = EWSDateTime.from_datetime(datetime.now()).astimezone(tz) - timedelta(days=365)
-                    q = Q(source_id__exists=False) & Q(datetime_received__gte=date_init)
+                    q = super().query_items_not_copied()
                     er = folder.origin.filter(q).only('id', 'changekey', 'item_class', 'source_id')
                     er.page_size = 200
                     er.chunk_size = 5
@@ -116,8 +99,8 @@ class EmailMigrator:
                         items_covered += 1
 
                         #print(item)
-                        self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
-                        #self.process_item(acc_orig, acc_dest, item)
+                        #self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
+                        self.copy_item(acc_orig, acc_dest, item)
 
                         if submitted_total == self.task_limit:
                             self.tp.wait_completion()
@@ -133,41 +116,109 @@ class EmailMigrator:
                     self.logger.warn("Erro, continuando...", e) 
 
 
-    def process_item(self, acc_orig, acc_dest, item):
-        copy = False
+    def copy_item(self, acc_orig, acc_dest, item, forceCopy=False):
         
-        if isinstance(item, Message) and item.item_class in ('IPM.Nota', 'IPM.Note'):
-            items = acc_orig.fetch(ids=[(item.id, item.changekey)], only_fields=['parent_folder_id', 'subject', 'id', 'changekey', 'item_class', 'source_id'])
-            item = next(items, None)
+        if super().is_copy_elegible(item):
 
-            parent = item.parent_folder_id.id
-            dest_folder = self.folder_migrator.map_folders[parent].dest
-            copy = True
-        elif isinstance(item, Contact) or  isinstance(item, DistributionList) or  isinstance(item, Persona) :
-            dest_folder = acc_dest.contacts
-            copy = True
-        elif isinstance(item, CalendarItem):
-            dest_folder = acc_dest.calendar
-            copy = True
+            if isinstance(item, Message) or isinstance(item, MeetingRequest) or isinstance(item, MeetingResponse) or isinstance(item, MeetingCancellation):
+                items = acc_orig.fetch(ids=[(item.id, item.changekey)], only_fields=['parent_folder_id', 'subject', 'id', 'changekey', 'item_class', 'source_id'])
+                item = next(items, None)
+                parent = item.parent_folder_id.id
+                dest_folder = self.folder_migrator.map_folders[parent].dest
+            elif isinstance(item, Contact) or  isinstance(item, DistributionList) or  isinstance(item, Persona) :
+                dest_folder = acc_dest.contacts
+            elif isinstance(item, CalendarItem):
+                dest_folder = acc_dest.calendar
 
-        if copy:
-            q = Q(source_id__exact=item.id)
-            if dest_folder.filter(q).count() == 0:
+            if forceCopy or not super().exists_item_by_source_id(dest_folder, item.id):
                 try:
                     item.source_id = item.id
                     item.save(update_fields=["source_id"])
 
-                    text = ''
+                    subject = ''
                     if hasattr(item, 'subject'):
-                        text = item.subject
-                    if hasattr(item, 'display_name'):
-                        text = item.display_name
+                        subject = item.subject
+                    elif hasattr(item, 'display_name'):
+                        subject = item.display_name
+                    else:
+                        pass
 
-                    print( f"Copiando item {item.id}: - {dest_folder.absolute}/{text}" )
-                    self.copied_items += 1
+                    print( f"Copiando item {item.id}: - {dest_folder.absolute}/{subject}" )
+                    
+                    if hasattr(self, 'copied_items'):
+                        self.copied_items += 1
+
                     data = acc_orig.export([item])
                     acc_dest.upload((dest_folder, d) for d in data)
                 except Exception as e:
                     self.logger.warn("Erro ao copiar, continuando...", e)
             else:
                 print( f"Ignorando item pois já foi copiado {item.id}" )
+        else:
+            pass
+
+
+class ItemComparator(BaseItem):
+    def __init__(self, folder_migrator, logger, tp, config):
+        super().__init__(folder_migrator, logger, tp, config)
+
+    def compare_items(self, acc_orig, acc_dest):
+
+        with open('logs/items_stats.csv', 'a') as f:
+
+            for id, folder  in self.folder_migrator.map_folders.items():
+
+                if folder.origin.absolute == '/root':
+                    continue
+
+                try:
+                    q = super().query_items()
+                    er = folder.origin.filter(q).only('id', 'changekey', 'item_class', 'source_id')
+                    er.page_size = 200
+                    er.chunk_size = 5
+                    self.logger.info( f"Comparando diretório {folder.origin.absolute}" )
+                    submitted_total = 0
+                    items_covered = 0
+                    for item in er:
+                        
+                        submitted_total += 1
+                        items_covered += 1
+
+                        #print(item)
+                        self.tp.add_task(self.compare_item, acc_orig, acc_dest, item)
+                        #self.compare_item(acc_orig, acc_dest, item)
+
+                        if submitted_total == self.task_limit:
+                            self.tp.wait_completion()
+                            self.logger.info( f"Processando diretório {folder.origin.absolute} - {items_covered}" )
+                            submitted_total = 0
+
+                    self.tp.wait_completion()
+
+                except Exception as e:
+                    self.logger.warn("Erro, continuando...", e) 
+
+                    
+    def compare_item(self, acc_orig, acc_dest, item):
+        
+        if super().is_copy_elegible(item):
+
+            if isinstance(item, Message) or isinstance(item, MeetingRequest) or isinstance(item, MeetingResponse) or isinstance(item, MeetingCancellation):
+                items = acc_orig.fetch(ids=[(item.id, item.changekey)], only_fields=['parent_folder_id', 'subject', 'id', 'changekey', 'item_class', 'source_id'])
+                item = next(items, None)
+                parent = item.parent_folder_id.id
+                dest_folder = self.folder_migrator.map_folders[parent].dest
+            elif isinstance(item, Contact) or  isinstance(item, DistributionList) or  isinstance(item, Persona) :
+                dest_folder = acc_dest.contacts
+            elif isinstance(item, CalendarItem):
+                dest_folder = acc_dest.calendar
+
+            item_dest = super().get_item_by_source_id(dest_folder, item.id)
+
+            if item_dest is None:
+                self.logger.warn( f"Item {item.id} não encontrado no destino durante verificação, copiando..." )
+                email_copier = ItemCopier(self.folder_migrator, self.logger, self.tp, self.config)
+                email_copier.copy_item(acc_orig, acc_dest, item)
+
+
+        
