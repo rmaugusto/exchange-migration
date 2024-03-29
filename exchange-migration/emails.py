@@ -10,12 +10,24 @@ from exchangelib import Q
 #Abstract Email Migrator
 class BaseItem(ABC):
     
-    def __init__(self, folder_migrator, logger, tp, config):
+    def __init__(self, folder_migrator, logger, tp, config, db_pool):
         self.folder_migrator = folder_migrator
+        self.db_pool = db_pool
         self.logger = logger
         self.tp = tp
         self.config = config
         self.task_limit = config['general']['task_limit']
+
+    def insert_db(self, account, type, subject, from_id, to_id, event, path):
+
+        with self.db_pool.getconn() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO email_migration (account, type, subject, from_id, to_id, event, path) VALUES (%s, %s, %s, %s, %s, %s, %s)",
+                    (account, type, subject, from_id, to_id, event, path)
+                )
+                conn.commit()
+        self.db_pool.putconn(conn)
 
 
     def query_items_not_copied(self):
@@ -71,8 +83,8 @@ class BaseItem(ABC):
 
 
 class ItemCopier(BaseItem):
-    def __init__(self, folder_migrator, logger, tp, config):
-        super().__init__(folder_migrator, logger, tp, config)
+    def __init__(self, folder_migrator, logger, tp, config, db_pool):
+        super().__init__(folder_migrator, logger, tp, config, db_pool)
 
     def copy_items(self, acc_orig, acc_dest):
 
@@ -99,8 +111,8 @@ class ItemCopier(BaseItem):
                         items_covered += 1
 
                         #print(item)
-                        #self.tp.add_task(self.process_item, acc_orig, acc_dest, item)
-                        self.copy_item(acc_orig, acc_dest, item)
+                        self.tp.add_task(self.copy_item, acc_orig, acc_dest, item, self.db_pool)
+                        #self.copy_item(acc_orig, acc_dest, item)
 
                         if submitted_total == self.task_limit:
                             self.tp.wait_completion()
@@ -120,15 +132,19 @@ class ItemCopier(BaseItem):
         
         if super().is_copy_elegible(item):
 
+            text_type = ''
             if isinstance(item, Message) or isinstance(item, MeetingRequest) or isinstance(item, MeetingResponse) or isinstance(item, MeetingCancellation):
                 items = acc_orig.fetch(ids=[(item.id, item.changekey)], only_fields=['parent_folder_id', 'subject', 'id', 'changekey', 'item_class', 'source_id'])
                 item = next(items, None)
                 parent = item.parent_folder_id.id
                 dest_folder = self.folder_migrator.map_folders[parent].dest
+                text_type = 'message'
             elif isinstance(item, Contact) or  isinstance(item, DistributionList) or  isinstance(item, Persona) :
                 dest_folder = acc_dest.contacts
+                text_type = 'contact'
             elif isinstance(item, CalendarItem):
                 dest_folder = acc_dest.calendar
+                text_type = 'calendar'
 
             if forceCopy or not super().exists_item_by_source_id(dest_folder, item.id):
                 try:
@@ -148,10 +164,19 @@ class ItemCopier(BaseItem):
                     if hasattr(self, 'copied_items'):
                         self.copied_items += 1
 
+                    super().insert_db(acc_orig.primary_smtp_address, text_type, subject, item.id, None, 'read', dest_folder.absolute)
                     data = acc_orig.export([item])
+
+                    super().insert_db(acc_orig.primary_smtp_address, text_type, subject, item.id, None, 'export', dest_folder.absolute)
+
                     acc_dest.upload((dest_folder, d) for d in data)
+
+                    new_id = super().get_item_by_source_id(dest_folder, item.id)
+                    super().insert_db(acc_orig.primary_smtp_address, text_type, subject, item.id, new_id.id, 'upload', dest_folder.absolute)
+
                 except Exception as e:
                     self.logger.warn("Erro ao copiar, continuando...", e)
+
             else:
                 print( f"Ignorando item pois já foi copiado {item.id}" )
         else:
@@ -159,8 +184,8 @@ class ItemCopier(BaseItem):
 
 
 class ItemComparator(BaseItem):
-    def __init__(self, folder_migrator, logger, tp, config):
-        super().__init__(folder_migrator, logger, tp, config)
+    def __init__(self, folder_migrator, logger, tp, config, db_pool):
+        super().__init__(folder_migrator, logger, tp, config, db_pool)
 
     def compare_items(self, acc_orig, acc_dest):
 

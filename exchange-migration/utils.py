@@ -1,11 +1,11 @@
 import logging
 import sys
-import time
 from exchangelib import ExtendedProperty, FaultTolerance, Configuration, Folder, FolderCollection
-from exchangelib import Q
-from thread import ThreadPool
 import os
 from exchangelib.properties import DistinguishedFolderId
+
+from psycopg2.pool import ThreadedConnectionPool as _ThreadedConnectionPool
+from threading import Semaphore
 
 em_logs = dict()
 
@@ -129,6 +129,25 @@ FOLDERS_IGNORE = [
     'XrmSearch',
     'YammerData'
 ]
+
+class EmThreadedConnectionPool(_ThreadedConnectionPool):
+    def __init__(self, minconn, maxconn, *args, **kwargs):
+        self._semaphore = Semaphore(maxconn)
+        super().__init__(minconn, maxconn, *args, **kwargs)
+
+    def getconn(self, *args, **kwargs):
+        self._semaphore.acquire()
+        try:
+            return super().getconn(*args, **kwargs)
+        except:
+            self._semaphore.release()
+            raise
+
+    def putconn(self, *args, **kwargs):
+        try:
+            super().putconn(*args, **kwargs)
+        finally:
+            self._semaphore.release()
 
 class CustomFieldSourceId(ExtendedProperty):
     distinguished_property_set_id = "Common"

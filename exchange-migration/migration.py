@@ -1,10 +1,12 @@
-from utils import FolderDiscovery, getLogger
+from utils import EmThreadedConnectionPool, FolderDiscovery, getLogger
 import time
 from exchangelib import FaultTolerance, Configuration
 from exchangelib import IMPERSONATION, Account, OAuth2Credentials
 from thread import ThreadPool
 from emails import ItemCopier, ItemComparator
 import time
+import psycopg2
+from psycopg2.pool import ThreadedConnectionPool
 
 
 class EmailMigrator:
@@ -51,6 +53,16 @@ class EmailMigrator:
             self.logger.error(f"Erro ao conectar caixa de destino: {dest_email}, {e}")
             return
 
+        db_config = {
+            'host': config['general']['db_host'],
+            'database': config['general']['db_name'],
+            'user': config['general']['db_user'],
+            'password': config['general']['db_pass']
+        }
+
+        self.logger.info(f"Abrindo conexão ao banco...") 
+        db_pool = EmThreadedConnectionPool(minconn=1, maxconn=1, **db_config)
+
         self.logger.info(f"Descobrindo diretórios conhecidos...") 
 
         self.folder_migrator = FolderDiscovery(logger=self.logger, auto_create=True)
@@ -70,11 +82,11 @@ class EmailMigrator:
         initial_time = time.time()
 
         self.logger.info(f"Iniciando copia de emails...")
-        copier = ItemCopier(self.folder_migrator, self.logger, self.tp, config)
+        copier = ItemCopier(self.folder_migrator, self.logger, self.tp, config, db_pool)
         copier.copy_items(acc_orig, acc_dest)
 
         self.logger.info(f"Gerando estatisticas...")
-        stats = ItemComparator(self.folder_migrator, self.logger, self.tp, config)
+        stats = ItemComparator(self.folder_migrator, self.logger, self.tp, config, db_pool)
         stats.compare_items(acc_orig, acc_dest)
 
         total_time = time.time() - initial_time
