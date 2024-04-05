@@ -70,7 +70,7 @@ class Database:
         with self.db_pool.getconn() as conn:
             with conn.cursor(cursor_factory = psycopg2.extras.NamedTupleCursor) as cursor:
                 cursor.execute(
-                    "SELECT * FROM migration_queue WHERE status = 'pending' or (status = 'processing' and instance = %s) ORDER BY priority ASC LIMIT 1",
+                    "SELECT * FROM migration_queue WHERE status = 'pending' or (status = 'processing' and instance = %s) ORDER BY priority DESC LIMIT 1",
                     (instance_name,)
                 )
                 migration = cursor.fetchone()
