@@ -1,19 +1,17 @@
-from utils import EmThreadedConnectionPool, FolderDiscovery, getLogger
+from utils import FolderDiscovery, getLogger
 import time
 from exchangelib import FaultTolerance, Configuration
 from exchangelib import IMPERSONATION, Account, OAuth2Credentials
 from thread import ThreadPool
 from emails import ItemCopier, ItemComparator
 import time
-import psycopg2
-from psycopg2.pool import ThreadedConnectionPool
 
 
 class EmailMigrator:
-    def __init__(self):
-        pass
+    def __init__(self, db):
+        self.db = db
 
-    def run(self, config, account_idx):
+    def run(self, config, origin_email, dest_email, initial_date, final_date, action):
 
         self.tp = ThreadPool(config['general']['thread_count'])
         self.copied_items = 0
@@ -31,9 +29,6 @@ class EmailMigrator:
         config_dest = Configuration(
             retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_dest, max_connections=config['dest']['connection_total']
         )
-
-        origin_email = config['accounts'][account_idx]['origin']
-        dest_email = config['accounts'][account_idx]['dest']
 
         self.logger = getLogger(dest_email)
 
@@ -53,16 +48,6 @@ class EmailMigrator:
             self.logger.error(f"Erro ao conectar caixa de destino: {dest_email}, {e}")
             return
 
-        db_config = {
-            'host': config['general']['db_host'],
-            'database': config['general']['db_name'],
-            'user': config['general']['db_user'],
-            'password': config['general']['db_pass']
-        }
-
-        self.logger.info(f"Abrindo conexão ao banco...") 
-        db_pool = EmThreadedConnectionPool(minconn=1, maxconn=1, **db_config)
-
         self.logger.info(f"Descobrindo diretórios conhecidos...") 
 
         self.folder_migrator = FolderDiscovery(logger=self.logger, auto_create=True)
@@ -81,13 +66,15 @@ class EmailMigrator:
 
         initial_time = time.time()
 
-        self.logger.info(f"Iniciando copia de emails...")
-        copier = ItemCopier(self.folder_migrator, self.logger, self.tp, config, db_pool)
-        copier.copy_items(acc_orig, acc_dest)
+        if action == 'migration' or action == 'migration_compare':
+            self.logger.info(f"Iniciando copia de emails...")
+            copier = ItemCopier(self.folder_migrator, self.logger, self.tp, config, self.db, initial_date, final_date)
+            copier.copy_items(acc_orig, acc_dest)
 
-        self.logger.info(f"Gerando estatisticas...")
-        stats = ItemComparator(self.folder_migrator, self.logger, self.tp, config, db_pool)
-        stats.compare_items(acc_orig, acc_dest)
+        if action == 'compare' or action == 'migration_compare':
+            self.logger.info(f"Gerando estatisticas...")
+            stats = ItemComparator(self.folder_migrator, self.logger, self.tp, config, self.db, initial_date, final_date)
+            stats.compare_items(acc_orig, acc_dest)
 
         total_time = time.time() - initial_time
         hours = int(total_time // 3600)

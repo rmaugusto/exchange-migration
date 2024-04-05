@@ -5,8 +5,11 @@ name = "pypi"
 
 [packages]
 PyYAML = "==6.0.1"
-psycopg2-binary = "==2.9.9"
-exchangelib = {version="==5.1.0", extras=["gssapi"]}
+psycopg2-binary = "*"
+psycopg2-pool = "==1.2"
+#exchangelib = {version="==5.2.0", extras=["gssapi"]}
+exchangelib = { git = 'https://github.com/ecederstrand/exchangelib.git', ref = 'master', editable = true }
+psycopg2 = "*"
 
 [dev-packages]
 

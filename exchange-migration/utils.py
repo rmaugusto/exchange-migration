@@ -3,7 +3,6 @@ import sys
 from exchangelib import ExtendedProperty, FaultTolerance, Configuration, Folder, FolderCollection
 import os
 from exchangelib.properties import DistinguishedFolderId
-
 from psycopg2.pool import ThreadedConnectionPool as _ThreadedConnectionPool
 from threading import Semaphore
 
@@ -151,7 +150,7 @@ class EmThreadedConnectionPool(_ThreadedConnectionPool):
 
 class CustomFieldSourceId(ExtendedProperty):
     distinguished_property_set_id = "Common"
-    property_id = 0x00008677
+    property_id = 0x00008688
     property_type = 'String'
 
 
@@ -174,7 +173,7 @@ class FolderDiscovery:
 
         try:
             self.logger.info(f"Validando diretório: {parent_dest_folder.absolute} / {folder_name}")
-            f = parent_dest_folder / folder_name
+            f = parent_dest_folder // folder_name
             return f
         except Exception as e:
             # Cria se não existir
@@ -213,10 +212,10 @@ class FolderDiscovery:
         if folder.id not in self.map_folders:
             self.map_folders[folder.id] = FolderMatch(origin=folder, dest=new_dest_folder)
 
-            for subfolder in folder.children:
-                #Diretório de emails
-                if (subfolder.folder_class == 'IPF.Note' or subfolder.name == 'Top of Information Store' or subfolder.name == 'Início do Repositório de Informações') and subfolder.name not in FOLDERS_IGNORE:
-                    self.traverse_and_create(subfolder, new_dest_folder)
+        for subfolder in folder.children:
+            #Diretório de emails
+            if (subfolder.folder_class == 'IPF.Note' or subfolder.name == 'Top of Information Store' or subfolder.name == 'Início do Repositório de Informações') and subfolder.name not in FOLDERS_IGNORE:
+                self.traverse_and_create(subfolder, new_dest_folder)
 
     def add_contacts_folder(self, acc_orig, acc_dest):
         folder_ori = acc_orig.contacts
@@ -265,7 +264,6 @@ class FolderDiscovery:
             if subfolder.id not in self.map_folders:
                 if (subfolder.folder_class == 'IPF.Note') and subfolder.name not in FOLDERS_IGNORE:
                     self.traverse_and_create(subfolder, root_folder_dest)
-
 
 
 def getLogger(name):

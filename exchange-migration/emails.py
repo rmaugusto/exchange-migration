@@ -10,38 +10,35 @@ from exchangelib import Q
 #Abstract Email Migrator
 class BaseItem(ABC):
     
-    def __init__(self, folder_migrator, logger, tp, config, db_pool):
+    def __init__(self, folder_migrator, logger, tp, config, db):
         self.folder_migrator = folder_migrator
-        self.db_pool = db_pool
         self.logger = logger
+        self.db = db
         self.tp = tp
         self.config = config
         self.task_limit = config['general']['task_limit']
 
-    def insert_db(self, account, type, subject, from_id, to_id, event, path):
-
-        with self.db_pool.getconn() as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO email_migration (account, type, subject, from_id, to_id, event, path) VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                    (account, type, subject, from_id, to_id, event, path)
-                )
-                conn.commit()
-        self.db_pool.putconn(conn)
-
-
-    def query_items_not_copied(self):
+    def query_items_not_copied(self, initial_date, final_date):
         tz = EWSTimeZone('America/Sao_Paulo')
-        initial_date = EWSDateTime.from_datetime(self.config['general']['initial_date']).astimezone(tz)
-        final_date = EWSDateTime.from_datetime(self.config['general']['final_date']).astimezone(tz)
 
-        return Q(source_id__exists=False) & Q(datetime_received__gte=initial_date) & Q(datetime_received__lte=final_date)
+        initial_date = EWSDateTime.from_datetime(initial_date).astimezone(tz)
+        final_date = EWSDateTime.from_datetime(final_date).astimezone(tz)
+
+        #initial_date = EWSDateTime.from_datetime(self.config['general']['initial_date']).astimezone(tz)
+        #final_date = EWSDateTime.from_datetime(self.config['general']['final_date']).astimezone(tz)
+        q_types = Q(item_class='IPM.Appointment') | Q(item_class='IPM.Contact') | Q(item_class='IPM.DistList') | Q(item_class='IPM.Note') | Q(item_class='IPM.StickyNote') | Q(item_class='IPM.Schedule.Meeting.Canceled') | Q(item_class='IPM.Schedule.Meeting.Request') | Q(item_class='IPM.Schedule.Meeting.Resp.Neg') | Q(item_class='IPM.Schedule.Meeting.Resp.Pos') | Q(item_class='IPM.Schedule.Meeting.Resp.Tent') | Q(item_class='IPM.Task') | Q(item_class='IPM.TaskRequest.Accept') | Q(item_class='IPM.TaskRequest.Decline') | Q(item_class='IPM.TaskRequest') | Q(item_class='IPM.TaskRequest.Update')
+
+        return Q(source_id__exists=False) & Q(datetime_received__gte=initial_date) & Q(datetime_received__lte=final_date) & q_types
     
-    def query_items(self):
+    def query_items(self, initial_date, final_date):
         tz = EWSTimeZone('America/Sao_Paulo')
-        initial_date = EWSDateTime.from_datetime(self.config['general']['initial_date']).astimezone(tz)
-        final_date = EWSDateTime.from_datetime(self.config['general']['final_date']).astimezone(tz)
-        return Q(datetime_received__gte=initial_date) & Q(datetime_received__lte=final_date)
+
+        initial_date = EWSDateTime.from_datetime(initial_date).astimezone(tz)
+        final_date = EWSDateTime.from_datetime(final_date).astimezone(tz)
+
+        #initial_date = EWSDateTime.from_datetime(self.config['general']['initial_date']).astimezone(tz)
+        #final_date = EWSDateTime.from_datetime(self.config['general']['final_date']).astimezone(tz)
+        return Q(datetime_received__gte=initial_date) & Q(datetime_received__lte=final_date) & q_types
      
     def get_item_by_id(self, folder, item_id):
         q = Q(id__exact=item_id)
@@ -83,8 +80,10 @@ class BaseItem(ABC):
 
 
 class ItemCopier(BaseItem):
-    def __init__(self, folder_migrator, logger, tp, config, db_pool):
-        super().__init__(folder_migrator, logger, tp, config, db_pool)
+    def __init__(self, folder_migrator, logger, tp, config, db, initial_date, final_date):
+        super().__init__(folder_migrator, logger, tp, config, db)
+        self.initial_date = initial_date
+        self.final_date = final_date
 
     def copy_items(self, acc_orig, acc_dest):
 
@@ -97,7 +96,7 @@ class ItemCopier(BaseItem):
                 try:
                     self.copied_items = 0
 
-                    q = super().query_items_not_copied()
+                    q = super().query_items_not_copied(self.initial_date, self.final_date)
                     er = folder.origin.filter(q).only('id', 'changekey', 'item_class', 'source_id')
                     er.page_size = 200
                     er.chunk_size = 5
@@ -111,7 +110,7 @@ class ItemCopier(BaseItem):
                         items_covered += 1
 
                         #print(item)
-                        self.tp.add_task(self.copy_item, acc_orig, acc_dest, item, self.db_pool)
+                        self.tp.add_task(self.copy_item, acc_orig, acc_dest, item, self.db)
                         #self.copy_item(acc_orig, acc_dest, item)
 
                         if submitted_total == self.task_limit:
@@ -164,15 +163,15 @@ class ItemCopier(BaseItem):
                     if hasattr(self, 'copied_items'):
                         self.copied_items += 1
 
-                    super().insert_db(acc_orig.primary_smtp_address, text_type, subject, item.id, None, 'read', dest_folder.absolute)
+                    self.db.insert_migration(acc_orig.primary_smtp_address, text_type, subject, item.id, None, 'read', dest_folder.absolute)
                     data = acc_orig.export([item])
 
-                    super().insert_db(acc_orig.primary_smtp_address, text_type, subject, item.id, None, 'export', dest_folder.absolute)
+                    self.db.insert_migration(acc_orig.primary_smtp_address, text_type, subject, item.id, None, 'export', dest_folder.absolute)
 
                     acc_dest.upload((dest_folder, d) for d in data)
 
                     new_id = super().get_item_by_source_id(dest_folder, item.id)
-                    super().insert_db(acc_orig.primary_smtp_address, text_type, subject, item.id, new_id.id, 'upload', dest_folder.absolute)
+                    self.db.insert_migration(acc_orig.primary_smtp_address, text_type, subject, item.id, new_id.id, 'upload', dest_folder.absolute)
 
                 except Exception as e:
                     self.logger.warn("Erro ao copiar, continuando...", e)
@@ -184,8 +183,10 @@ class ItemCopier(BaseItem):
 
 
 class ItemComparator(BaseItem):
-    def __init__(self, folder_migrator, logger, tp, config, db_pool):
+    def __init__(self, folder_migrator, logger, tp, config, db_pool, initial_date, final_date):
         super().__init__(folder_migrator, logger, tp, config, db_pool)
+        self.initial_date = initial_date
+        self.final_date = final_date
 
     def compare_items(self, acc_orig, acc_dest):
 
@@ -197,7 +198,7 @@ class ItemComparator(BaseItem):
                     continue
 
                 try:
-                    q = super().query_items()
+                    q = super().query_items(self.initial_date, self.final_date)
                     er = folder.origin.filter(q).only('id', 'changekey', 'item_class', 'source_id')
                     er.page_size = 200
                     er.chunk_size = 5
