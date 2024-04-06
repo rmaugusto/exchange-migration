@@ -49,9 +49,13 @@ def main():
                 if current_migration.instance == config['general']['instance_name'] and current_migration.status == 'processing':
                     logger.info(f"Migração {next_migration.id} travada, iniciando migração...")
 
-                    em = EmailMigrator(db)
-                    em.run(config, next_migration.email_origin, next_migration.email_destination, next_migration.date_begin, next_migration.date_end, current_migration.action)
-                    db.update_migration_done(next_migration.id)
+                    try:
+                        em = EmailMigrator(db)
+                        em.run(config, next_migration.email_origin, next_migration.email_destination, next_migration.date_begin, next_migration.date_end, current_migration.action)
+                        db.update_migration_done(next_migration.id)
+                    except Exception as e:
+                        logger.error(f"Erro ao migração {next_migration.id}: {e}")
+
                 else:
                     logger.info(f"Migração {next_migration.id} travada pelo processo {current_migration.instance}, ignorando...")
 
