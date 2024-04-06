@@ -150,7 +150,7 @@ class EmThreadedConnectionPool(_ThreadedConnectionPool):
 
 class CustomFieldSourceId(ExtendedProperty):
     distinguished_property_set_id = "Common"
-    property_id = 0x00008688
+    property_id = 0x00018600
     property_type = 'String'
 
 
