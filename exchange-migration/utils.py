@@ -5,6 +5,8 @@ import os
 from exchangelib.properties import DistinguishedFolderId
 from psycopg2.pool import ThreadedConnectionPool as _ThreadedConnectionPool
 from threading import Semaphore
+from exchangelib import FaultTolerance, Configuration
+from exchangelib import IMPERSONATION, Account, OAuth2Credentials
 
 em_logs = dict()
 
@@ -160,11 +162,43 @@ class FolderMatch:
         self.origin = origin
         self.dest = dest
 
+class AccountManager:
+    def setup(self, config, origin_email, dest_email):
+        credentials_orig = OAuth2Credentials(
+            client_id=config['origin']['client_id'], client_secret=config['origin']['client_secret'], tenant_id=config['origin']['tenant_id']
+        )
+        config_orig = Configuration(
+            retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_orig, max_connections=config['origin']['connection_total']
+        )
+
+        credentials_dest = OAuth2Credentials(
+            client_id=config['dest']['client_id'], client_secret=config['dest']['client_secret'], tenant_id=config['dest']['tenant_id']
+        )
+        config_dest = Configuration(
+            retry_policy=FaultTolerance(max_wait=3600), credentials=credentials_dest, max_connections=config['dest']['connection_total']
+        )
+
+        print("Iniciando copia de emails...")
+        print(f"Conectando caixa de origem: {origin_email}")
+
+        try:
+            self.acc_orig = Account(origin_email, credentials=credentials_orig, autodiscover=True,  access_type=IMPERSONATION, config=config_orig)
+        except Exception as e:
+            print(f"Erro ao conectar caixa de origem: {origin_email}, {e}")
+            return
+        
+        print(f"Conectando caixa de destino: {dest_email}")
+        try:
+            self.acc_dest = Account(dest_email, credentials=credentials_dest, autodiscover=True,  access_type=IMPERSONATION, config=config_dest)
+        except Exception as e:
+            print(f"Erro ao conectar caixa de destino: {dest_email}, {e}")
+            return
+
+
 class FolderDiscovery:
-    def __init__(self, auto_create=True, logger=None):
+    def __init__(self, auto_create=True):
         self.map_folders = {}
         self.auto_create = auto_create
-        self.logger = logger
 
     def create_or_get_folder_dest(self, folder_name, parent_dest_folder):
 
@@ -172,7 +206,7 @@ class FolderDiscovery:
             return None
 
         try:
-            self.logger.info(f"Validando diretório: {parent_dest_folder.absolute} / {folder_name}")
+            print(f"Validando diretório: {parent_dest_folder.absolute} / {folder_name}")
             f = parent_dest_folder // folder_name
             return f
         except Exception as e:

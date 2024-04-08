@@ -1,6 +1,8 @@
 
 import psycopg2.extras
-from utils import EmThreadedConnectionPool
+#from utils import EmThreadedConnectionPool
+from psycopg2.pool import ThreadedConnectionPool
+
 
 class Database:
     """
@@ -49,7 +51,7 @@ class Database:
             'password': self.config['general']['db_pass']
         }
 
-        self.db_pool = EmThreadedConnectionPool(minconn=1, maxconn=1, **db_config)
+        self.db_pool = ThreadedConnectionPool(minconn=1, maxconn=1, **db_config)
 
 
     def insert_migration(self, account, type, subject, from_id, to_id, event, path):

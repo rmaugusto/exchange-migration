@@ -20,11 +20,9 @@ def main():
 
     config = load(open('config.yaml', 'r'), Loader=Loader)
 
-    logger = getLogger("instance")
-
     db = Database(config)
 
-    logger.info("Conectando ao banco de dados...")
+    print("Conectando ao banco de dados...")
     db.connect()
 
     if 'accounts' in config:
@@ -34,30 +32,30 @@ def main():
             em.run(config, accounts[account_idx]['origin'], accounts[account_idx]['dest'], accounts['general']['date_begin'], accounts['general']['date_end'])
     else:
         while True:
-            logger.info("Procurando proxima migração...")
+            print("Procurando proxima migração...")
             next_migration = db.get_next_migration(config['general']['instance_name'])
 
             if next_migration is None:
-                logger.info("Nenhuma migração encontrada, aguardando 30 segundos...")
+                print("Nenhuma migração encontrada, aguardando 30 segundos...")
                 time.sleep(30)
             else:
-                logger.info(f"Tentando travar migração {next_migration.id}...")
+                print(f"Tentando travar migração {next_migration.id}...")
                 db.try_lock_migration(next_migration.id, config['general']['instance_name'])
 
                 current_migration = db.get_migration_by_id(next_migration.id)
 
                 if current_migration.instance == config['general']['instance_name'] and current_migration.status == 'processing':
-                    logger.info(f"Migração {next_migration.id} travada, iniciando migração...")
+                    print(f"Migração {next_migration.id} travada, iniciando migração...")
 
                     try:
-                        em = EmailMigrator(db)
+                        em = EmailMigrator()
                         em.run(config, next_migration.email_origin, next_migration.email_destination, next_migration.date_begin, next_migration.date_end, current_migration.action)
                         db.update_migration_done(next_migration.id)
                     except Exception as e:
-                        logger.error(f"Erro ao migração {next_migration.id}: {e}")
+                        print(f"Erro ao migração {next_migration.id}: {e}")
 
                 else:
-                    logger.info(f"Migração {next_migration.id} travada pelo processo {current_migration.instance}, ignorando...")
+                    print(f"Migração {next_migration.id} travada pelo processo {current_migration.instance}, ignorando...")
 
 if __name__ == "__main__":
     main()
