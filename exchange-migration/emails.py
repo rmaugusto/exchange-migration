@@ -89,8 +89,11 @@ class ItemCopier():
         global db
         global account_manager
 
-        if not proc_registered:
+
+        if 'proc_registered' not in globals():
+
             proc_registered = True
+            proc_init = True
 
             try:
                 Contact.register('source_id', CustomFieldSourceId)
@@ -102,7 +105,6 @@ class ItemCopier():
             except Exception as e:
                 print(f"source_id já registrado: {e}")
 
-            proc_init = True
 
             folder_migrator = fm
 
@@ -112,7 +114,7 @@ class ItemCopier():
             account_manager = AccountManager()
             account_manager.setup(config, origin_email, dest_email)
 
-        proc_init = False
+            proc_init = False
 
 
     def copy_item(folder, origin_email, dest_email, item):
