@@ -83,38 +83,40 @@ class ItemCopier():
 
     def init_process(fm, config, initial_date, final_date, origin_email, dest_email):
 
-        global proc_registered
         global proc_init
         global folder_migrator
         global db
         global account_manager
 
+        proc_init = True
+        inst = config['general']['instance_name']
+        print(f"init_process: {inst}")
 
-        if 'proc_registered' not in globals():
+        try:
+            Contact.register('source_id', CustomFieldSourceId)
+            CalendarItem.register('source_id', CustomFieldSourceId)
+            Message.register('source_id', CustomFieldSourceId)
+            MeetingRequest.register('source_id', CustomFieldSourceId)
+            MeetingResponse.register('source_id', CustomFieldSourceId)
+            MeetingCancellation.register('source_id', CustomFieldSourceId)
+        except Exception as e:
+            print(f"source_id já registrado: {e}")
 
-            proc_registered = True
-            proc_init = True
+        folder_migrator = fm
 
-            try:
-                Contact.register('source_id', CustomFieldSourceId)
-                CalendarItem.register('source_id', CustomFieldSourceId)
-                Message.register('source_id', CustomFieldSourceId)
-                MeetingRequest.register('source_id', CustomFieldSourceId)
-                MeetingResponse.register('source_id', CustomFieldSourceId)
-                MeetingCancellation.register('source_id', CustomFieldSourceId)
-            except Exception as e:
-                print(f"source_id já registrado: {e}")
-
-
-            folder_migrator = fm
-
+        if 'db' not in globals():
             db = Database(config)
             db.connect()
+        else:
+            print("db já definido")
 
+        if 'account_manager' not in globals():
             account_manager = AccountManager()
             account_manager.setup(config, origin_email, dest_email)
+        else:
+            print("account_manager ja definido")
 
-            proc_init = False
+        proc_init = False
 
 
     def copy_item(folder, origin_email, dest_email, item):
