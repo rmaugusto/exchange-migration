@@ -11,13 +11,6 @@ from migration import EmailMigrator
 
 def main():
 
-    Contact.register('source_id', CustomFieldSourceId)
-    CalendarItem.register('source_id', CustomFieldSourceId)
-    Message.register('source_id', CustomFieldSourceId)
-    MeetingRequest.register('source_id', CustomFieldSourceId)
-    MeetingResponse.register('source_id', CustomFieldSourceId)
-    MeetingCancellation.register('source_id', CustomFieldSourceId)
-
     config = load(open('config.yaml', 'r'), Loader=Loader)
 
     db = Database(config)

@@ -83,26 +83,31 @@ class ItemCopier():
 
     def init_process(fm, config, initial_date, final_date, origin_email, dest_email):
 
-        Contact.register('source_id', CustomFieldSourceId)
-        CalendarItem.register('source_id', CustomFieldSourceId)
-        Message.register('source_id', CustomFieldSourceId)
-        MeetingRequest.register('source_id', CustomFieldSourceId)
-        MeetingResponse.register('source_id', CustomFieldSourceId)
-        MeetingCancellation.register('source_id', CustomFieldSourceId)
-
+        global proc_registered
         global proc_init
-        proc_init = True
-
         global folder_migrator
-        folder_migrator = fm
-
         global db
-        db = Database(config)
-        db.connect()
-
         global account_manager
-        account_manager = AccountManager()
-        account_manager.setup(config, origin_email, dest_email)
+
+        if not proc_registered:
+            proc_registered = True
+
+            Contact.register('source_id', CustomFieldSourceId)
+            CalendarItem.register('source_id', CustomFieldSourceId)
+            Message.register('source_id', CustomFieldSourceId)
+            MeetingRequest.register('source_id', CustomFieldSourceId)
+            MeetingResponse.register('source_id', CustomFieldSourceId)
+            MeetingCancellation.register('source_id', CustomFieldSourceId)
+
+            proc_init = True
+
+            folder_migrator = fm
+
+            db = Database(config)
+            db.connect()
+
+            account_manager = AccountManager()
+            account_manager.setup(config, origin_email, dest_email)
 
         proc_init = False
 
