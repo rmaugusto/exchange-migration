@@ -92,12 +92,15 @@ class ItemCopier():
         if not proc_registered:
             proc_registered = True
 
-            Contact.register('source_id', CustomFieldSourceId)
-            CalendarItem.register('source_id', CustomFieldSourceId)
-            Message.register('source_id', CustomFieldSourceId)
-            MeetingRequest.register('source_id', CustomFieldSourceId)
-            MeetingResponse.register('source_id', CustomFieldSourceId)
-            MeetingCancellation.register('source_id', CustomFieldSourceId)
+            try:
+                Contact.register('source_id', CustomFieldSourceId)
+                CalendarItem.register('source_id', CustomFieldSourceId)
+                Message.register('source_id', CustomFieldSourceId)
+                MeetingRequest.register('source_id', CustomFieldSourceId)
+                MeetingResponse.register('source_id', CustomFieldSourceId)
+                MeetingCancellation.register('source_id', CustomFieldSourceId)
+            except Exception as e:
+                print(f"source_id já registrado: {e}")
 
             proc_init = True
 
