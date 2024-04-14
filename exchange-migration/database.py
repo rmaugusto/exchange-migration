@@ -106,6 +106,16 @@ class Database:
         
         return migration
     
+    def update_migration_error(self, id):
+        with self.db_pool.getconn() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "UPDATE migration_queue SET status = 'pending', instance = NULL, last_update = now() WHERE id = %s",
+                    (id,)
+                )
+                conn.commit()
+        self.db_pool.putconn(conn)
+
     def update_migration_done(self, id):
 
         with self.db_pool.getconn() as conn:

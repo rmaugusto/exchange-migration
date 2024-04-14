@@ -53,6 +53,7 @@ def main():
                         db.update_migration_done(next_migration.id)
                     except Exception as e:
                         print(f"Erro ao migração {next_migration.id}: {e}")
+                        db.update_migration_error(next_migration.id)
 
                 else:
                     print(f"Migração {next_migration.id} travada pelo processo {current_migration.instance}, ignorando...")
